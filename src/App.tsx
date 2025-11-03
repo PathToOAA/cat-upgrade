@@ -3,6 +3,8 @@ import UpgradePage from './pages/upgrade'
 import ShopPage from './pages/shop'
 import CollectionPage from './pages/collection'
 import FailModal from './components/FailModal'
+import FooterBar from './components/FooterBar'
+import { MAX_LEVEL, PROTECT_REQUIRED, START_MONEY, SUCCESS_RATES, UPGRADE_COSTS } from './game/balance'
 
 type Tab = 'shop' | 'upgrade' | 'collection'
 
@@ -13,7 +15,7 @@ type SaveData = {
   bestLevel: number
 }
 
-const K = { startMoney: 5_000_000, startProtect: 3 }
+const K = { startMoney: START_MONEY, startProtect: 3 }
 
 const catPics: string[] = [
   '/wash_cat.png','/t_cat.png','/bird_cat.png','/club_cat.png','/cool_cat.png','/sock_cat.png','/bbong_cat.png','/coke_cat.png','/gavity_cat.png','/good_cat.png','/cup_cat.png','/lee_cat.png','/mozza_cat.png','/ninja_cat.png','/poop_cat.png','/sleep_cat.png','/theif_cat.png','/dino_cat.png','/dae_cat.png','/health_cat.png','/heap_cat.png','/eye_cat.png'
@@ -41,27 +43,12 @@ function App() {
   const [failOpen, setFailOpen] = useState(false)
   const [failNeed, setFailNeed] = useState(0)
 
-  const cost = useMemo(() => 1_000 * (save.level + 1) * (save.level + 1), [save.level])
-
-  const successRate = useMemo(() => {
-    if (save.level <= 2) return 100
-    if (save.level <= 5) return 75
-    if (save.level <= 8) return 55
-    if (save.level <= 10) return 40
-    if (save.level <= 12) return 30
-    if (save.level <= 14) return 20
-    return 12
-  }, [save.level])
-
-  function requiredProtect(level: number) {
-    if (level <= 4) return 1
-    if (level <= 7) return 2
-    if (level <= 10) return 3
-    if (level <= 13) return 4
-    return 5
-  }
+  const cost = useMemo(() => (save.level >= MAX_LEVEL ? Infinity : (UPGRADE_COSTS[save.level] ?? Infinity)), [save.level])
+  const successRate = useMemo(() => SUCCESS_RATES[Math.min(save.level, SUCCESS_RATES.length - 1)], [save.level])
+  const needProtect = useMemo(() => PROTECT_REQUIRED[Math.min(save.level, PROTECT_REQUIRED.length - 1)] ?? 0, [save.level])
 
   function tryUpgrade() {
+    if (save.level >= MAX_LEVEL) { alert('엔딩에 도달했습니다! (eye_cat)'); return }
     if (save.money < cost) return alert('돈이 부족합니다!')
     const nextMoney = save.money - cost
     const roll = Math.random() * 100
@@ -70,7 +57,7 @@ function App() {
       setSave(s => ({ ...s, money: nextMoney, level: nextLevel, bestLevel: Math.max(s.bestLevel, nextLevel) }))
     } else {
       setSave(s => ({ ...s, money: nextMoney }))
-      setFailNeed(requiredProtect(save.level))
+      setFailNeed(needProtect)
       setFailOpen(true)
     }
   }
@@ -89,45 +76,46 @@ function App() {
 
   function warpTo(level: number, price: number) {
     if (save.money < price) return alert('돈이 부족합니다!')
-    setSave(s => ({ ...s, money: s.money - price, level, bestLevel: Math.max(s.bestLevel, level) }))
+    const target = Math.min(level, MAX_LEVEL)
+    setSave(s => ({ ...s, money: s.money - price, level: target, bestLevel: Math.max(s.bestLevel, target) }))
   }
 
   function saveCatWithProtect() {
+    if (failNeed <= 0) { setFailOpen(false); return }
     if (save.protect < failNeed) { alert('방지권이 부족합니다!'); return }
     setSave(s => ({ ...s, protect: s.protect - failNeed }))
     setFailOpen(false)
   }
 
-  function giveUpCat() {
-    setSave(s => ({ ...s, level: 0 }))
-    setFailOpen(false)
-  }
+  function giveUpCat() { setSave(s => ({ ...s, level: 0 })); setFailOpen(false) }
 
   return (
-    <div className="w-full max-w-[420px] mx-auto px-4 pb-10 pt-3">
-      <header className="sticky top-0 z-10 bg-inherit pb-2 mb-2">
+    <div className="w-full bg-white max-w-[420px] mx-auto px-4 pt-3 min-h-screen flex flex-col">
+      <header className="sticky top-0 z-10 bg-inherit pb-2 mb-2 ">
         <div className="flex gap-1 justify-between">
           {(['shop','upgrade','collection'] as Tab[]).map(t => (
-            <button key={t} className={`flex-1 py-3 font-bold text-base border-b-2 ${tab===t? 'border-neutral-500':'border-transparent'}`} onClick={() => setTab(t)}>
+            <button key={t} className={`flex-1 py-3 font-bold text-base ${tab===t? 'bg-[#d9d9d9]':'bg-inherit'}`} onClick={() => setTab(t)}>
               {t==='shop'?'상점':t==='upgrade'?'강화':'도감'}
             </button>
           ))}
         </div>
       </header>
 
-      {tab==='upgrade' && (
-        <UpgradePage level={save.level} protect={save.protect} money={save.money} cost={cost} successRate={successRate} catPics={catPics} onTryUpgrade={tryUpgrade} onSell={sellCat} />
-      )}
+      <div className="flex-1">
+        {tab==='upgrade' && (
+          <UpgradePage level={save.level} protect={save.protect} money={save.money} cost={cost} successRate={successRate} catPics={catPics} onTryUpgrade={tryUpgrade} onSell={sellCat} />
+        )}
+        {tab==='shop' && (
+          <ShopPage bestLevel={save.bestLevel} protect={save.protect} money={save.money} onBuyProtect={buyProtect} onWarp={warpTo} />
+        )}
+        {tab==='collection' && (
+          <CollectionPage bestLevel={save.bestLevel} money={save.money} />
+        )}
+      </div>
 
-      {tab==='shop' && (
-        <ShopPage bestLevel={save.bestLevel} protect={save.protect} money={save.money} onBuyProtect={buyProtect} onWarp={warpTo} />
-      )}
+      <FooterBar level={save.level} protect={save.protect} money={save.money} />
 
-      {tab==='collection' && (
-        <CollectionPage bestLevel={save.bestLevel} money={save.money} />
-      )}
-
-      <FailModal open={failOpen} level={save.level} need={failNeed} have={save.protect} onSave={saveCatWithProtect} onGiveUp={giveUpCat} />
+      <FailModal open={failOpen} level={save.level} need={failNeed} have={save.protect} blocked={failNeed <= 0} onSave={saveCatWithProtect} onGiveUp={giveUpCat} />
     </div>
   )
 }
